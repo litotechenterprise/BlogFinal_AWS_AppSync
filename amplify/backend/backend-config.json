@@ -16,5 +16,13 @@
         }
       }
     }
+  },
+  "auth": {
+    "blogfinaleeded4da": {
+      "service": "Cognito",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [],
+      "customAuth": false
+    }
   }
 }
