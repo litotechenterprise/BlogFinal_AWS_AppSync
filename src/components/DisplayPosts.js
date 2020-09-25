@@ -1,9 +1,12 @@
 import React, {Component} from 'react'
 import { listPosts } from '../graphql/queries'
-import { onCreatePost, onDeletePost } from '../graphql/subscriptions'
+import { onCreatePost, onDeletePost, onUpdatePost, onCreateComment} from '../graphql/subscriptions'
 import { API, graphqlOperation } from 'aws-amplify'
 import DeletePost from './DeletePost'
 import EditPost from './EditPost'
+import CreateCommentPost from './CreateCommentPost'
+import CommentPost from './CommentPost'
+import { updatePost } from '../graphql/mutations'
 
 class DisplayPosts extends Component {
 
@@ -34,17 +37,44 @@ class DisplayPosts extends Component {
                     this.setState({posts: updatedPost})
                 }
             })
+
+        this.updatePostListener = API.graphql(graphqlOperation(onUpdatePost))
+            .subscribe({
+                next: postData => {
+                    const {posts} = this.state
+                    const updatedPost = postData.value.data.onUpdatePost
+                    const index  = posts.index(post => post.id === updatedPost.id)
+                    const updatedPosts = [...posts.slice(0, index), updatePost, ...posts.slice(index + 1)]
+
+                    this.setState({ posts: updatedPosts})
+                }
+            })
+        
+        this.createPostCommentListener = API.graphql(graphqlOperation(onCreateComment))
+            .subscribe({
+                next: commentData => {
+                    const createComment = commentData.value.data.onCreateComment
+                    let posts = [...this.state.posts]
+                    for(let post of posts){
+                        if(createComment.post.id === post.id) {
+                            post.comments.items.push(createComment)
+                        }
+                    }
+                    this.setState({posts})
+                }
+            })
     }
 
     componentWillUnmount() {
         this.createPostListener.unsubcribe()
         this.deletePostListener.unsubcribe()
+        this.updatePostListener.unsubcribe()
+        this.createPostCommentListener.unsubcribe()
     }
 
     getPosts = async() => {
         const results = await API.graphql(graphqlOperation(listPosts))
         this.setState({posts: results.data.listPosts.items})
-        // console.log("ALL Posts: " + JSON.stringify(results.data.listPosts.items))
     }
 
     render() {
@@ -66,7 +96,14 @@ class DisplayPosts extends Component {
                     <br />
                     <span>
                         <DeletePost data={post}/>
-                        <EditPost/>
+                        <EditPost {...post}/>
+                    </span>
+                    <span>
+                         <CreateCommentPost postId={post.id}/>
+                            { post.comments.items.length > 0 && <span style={{fontSize:'19px', color:'gray'}}>Comments: </span>}
+                            {
+                                post.comments.items.map((comment, index) => <CommentPost key={index} commentData={comment}/>)
+                            }  
                     </span>
                 </div>
             )
