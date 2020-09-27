@@ -62,7 +62,7 @@ export const listPosts = /* GraphQL */ `
         likes {
           items {
             id
-            numOfLikes
+            numberLikes
             likeOwnerId
             likeOwnerUsername
           }

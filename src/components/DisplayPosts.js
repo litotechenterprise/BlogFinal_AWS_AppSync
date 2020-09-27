@@ -1,21 +1,35 @@
 import React, {Component} from 'react'
 import { listPosts } from '../graphql/queries'
-import { onCreatePost, onDeletePost, onUpdatePost, onCreateComment} from '../graphql/subscriptions'
-import { API, graphqlOperation } from 'aws-amplify'
+import { onCreatePost, onDeletePost, onUpdatePost, onCreateComment, onCreateLike} from '../graphql/subscriptions'
+import { API, graphqlOperation, Auth } from 'aws-amplify'
 import DeletePost from './DeletePost'
 import EditPost from './EditPost'
 import CreateCommentPost from './CreateCommentPost'
 import CommentPost from './CommentPost'
-import { updatePost } from '../graphql/mutations'
+import { updatePost, createLike } from '../graphql/mutations'
+import {  FaThumbsUp} from 'react-icons/fa'
 
 class DisplayPosts extends Component {
 
     state = {
-        posts: []
+        ownerId:"",
+        ownerUsername: "",
+        posts: [],
+        isHovering: false,
+        errMsg:'',
+        postLikedBy: [],
     }
 
     componentDidMount = async () => {
         this.getPosts()
+
+        await Auth.currentUserInfo()
+            .then(user => {
+                this.setState({
+                    ownerId:user.attributes.sub,
+                    ownerUsername: user.username
+                })
+            })
 
         this.createPostListener = API.graphql(graphqlOperation(onCreatePost))
             .subscribe({
@@ -63,6 +77,20 @@ class DisplayPosts extends Component {
                     this.setState({posts})
                 }
             })
+
+        this.createPostLikeListener = API.graphql(graphqlOperation(onCreateLike))
+            .subscribe({
+                next: postData => {
+                    const createdLike = postData.value.data.onLikePost
+                    let posts = [...this.state.posts]
+                    for(let post of posts) {
+                        if(createdLike.post.id === post.id) {
+                            post.likes.items.push(createdLike)
+                        }
+                    }
+                    this.setState({posts})
+                }
+            })
     }
 
     componentWillUnmount() {
@@ -70,15 +98,49 @@ class DisplayPosts extends Component {
         this.deletePostListener.unsubcribe()
         this.updatePostListener.unsubcribe()
         this.createPostCommentListener.unsubcribe()
+        this.createPostLikeListener.unsubcribe()
     }
 
     getPosts = async() => {
         const results = await API.graphql(graphqlOperation(listPosts))
+        console.log(results)
         this.setState({posts: results.data.listPosts.items})
+    }
+
+    likedPost = (postid) => {
+        for(let post of this.state.posts) {
+            if(post.id === postid) {
+                if(post.postOwnerId === this.state.ownerId) 
+                    return true
+                for(let like of post.likes.items) {
+                    if(like.likeOwner.id === this.state.ownerId)
+                        return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    handleLike = async(postId) => {
+        if(this.likedPost(postId)) { return this.setState({errMsg:"Cannont like your own post"})}
+        const input = {
+            numberLikes:1,
+            likeOwnerId: this.state.ownerId,
+            likeOwnerUsername: this.state.ownerUsername,
+            likePostId: postId 
+        }
+
+        try {
+            const results = await API.graphql(graphqlOperation(createLike, {input}))
+        } catch (err) {
+            console.log(err)
+        }
     }
 
     render() {
         const {posts}  = this.state
+        let LoggedInUser = this.state.ownerId
         return posts.map((post) => {
             return(
                 <div className="posts" style={rowstyle} key={post.id}>
@@ -95,8 +157,20 @@ class DisplayPosts extends Component {
                     <p>{post.postBody}</p>
                     <br />
                     <span>
-                        <DeletePost data={post}/>
-                        <EditPost {...post}/>
+                        {post.postOwnerId === LoggedInUser && 
+                            <DeletePost data={post}/>
+                        }
+
+                        {post.postOwnerId === LoggedInUser && 
+                              <EditPost {...post}/>
+                        }
+                       
+                        <span>
+                            <p className="alert"> {post.postOwnerId === LoggedInUser && this.state.errMsg}</p>
+                            <p onClick={() => this.handleLike(post.id)}><FaThumbsUp />
+                                {post.likes.items.length}
+                            </p>
+                        </span>
                     </span>
                     <span>
                          <CreateCommentPost postId={post.id}/>
